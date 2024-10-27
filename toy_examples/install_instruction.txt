@@ -1,0 +1,12 @@
+```
+conda create --name ebflow python=3.7
+pip install -e .
+pip install numpy
+pip install torch
+pip install tensorboard
+pip install six
+pip install tensorflow
+pip install tensorflow_datasets
+pip install scikit-learn
+pip install matplotlib
+```

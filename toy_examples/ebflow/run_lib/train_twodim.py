@@ -52,8 +52,11 @@ def run(config):
     if config['loss_type'] == 'cd':
         replay_buffer = ReplayBuffer(config['buffer_size'])
         with torch.no_grad():
-            z = torch.randn((1000, config['input_size'])).to('cuda')
-            x_fake = ebflow.inverse(z)
+            # z = torch.randn((1000, config['input_size'])).to('cuda')
+            # x_fake = ebflow.inverse(z)
+            # print(x_fake.shape)
+            x_fake = torch.randn((1000, config['input_size'])).to('cuda', dtype=torch.double) * 3
+            # print(x_fake.shape)
         replay_buffer.add(x_fake.detach().cpu().numpy())
     # Optimizer
     if config['opt_type'] == "adam":

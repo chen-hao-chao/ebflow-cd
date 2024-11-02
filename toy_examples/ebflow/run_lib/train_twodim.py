@@ -7,6 +7,7 @@ import datetime
 from ebflow.datasets.datasets import get_dataset
 from ebflow.models import coupling_net
 from ebflow.models.ema import ExponentialMovingAverage
+from ebflow.models.buffer import ReplayBuffer
 from ebflow.run_lib.utils import get_oracle_score, evaluate, plot_energy, save_checkpoint
 
 def run(config):
@@ -47,6 +48,13 @@ def run(config):
                               dependency=bool(config['dependency']),
                               norm_type=config['norm_type'],
                               sigma=config['sigma']).to('cuda', dtype=torch.double)
+    # Buffer
+    if config['loss_type'] == 'cd':
+        replay_buffer = ReplayBuffer(config['buffer_size'])
+        with torch.no_grad():
+            z = torch.randn((1000, config['input_size'])).to('cuda')
+            x_fake = ebflow.inverse(z)
+        replay_buffer.add(x_fake.detach().cpu().numpy())
     # Optimizer
     if config['opt_type'] == "adam":
         optimizer = torch.optim.Adam(ebflow.parameters(),
@@ -120,6 +128,22 @@ def run(config):
             energy_fake = -neg_e[batch_size:]
             loss = energy_true - energy_fake
             loss = loss.mean()
+        elif config['loss_type'] == 'cd':
+            batch_size = x.shape[0]
+            neg_e, _, _ = ebflow.neg_energy(x)
+            score = torch.autograd.grad(neg_e.sum(), x)[0]
+            with torch.no_grad():
+                replay_x, _ = replay_buffer.sample(batch_size)
+                replay_x = torch.tensor(replay_x).to(x.device)
+                z = torch.randn(x.shape).to(x.device)
+                x_fake = replay_x + score * config['step_size'] + np.sqrt(2*config['step_size']) * z
+                x = torch.cat([x, x_fake], 0)
+            neg_e, _, _ = ebflow.neg_energy(x)
+            energy_true = -neg_e[:batch_size]
+            energy_fake = -neg_e[batch_size:]
+            loss = energy_true - energy_fake
+            loss = loss.mean()
+            replay_buffer.add(x_fake.detach().cpu().numpy())
         elif config['loss_type'] == 'dsm':
             neg_e, _, _ = ebflow.neg_energy(x)
             score = torch.autograd.grad(neg_e.sum(), x, create_graph=True)[0]

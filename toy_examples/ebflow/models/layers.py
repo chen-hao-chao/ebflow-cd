@@ -182,8 +182,8 @@ class Linear_Layer(nn.Module):
     
     def inverse(self, y):
         y = y - self.linear_layer.bias[None, ...]
-        y = y[..., None]  # 'torch.solve' requires N column vectors (i.e. shape (N, n, 1)).
-        y = torch.solve(y, self.linear_layer.weight)[0]
+        # y = y[..., None]  # 'torch.solve' requires N column vectors (i.e. shape (N, n, 1)).
+        y = torch.linalg.solve(self.linear_layer.weight.repeat(y.shape[0], 1, 1), y)
         x = torch.squeeze(y)  # remove the extra dimension that we've added for 'torch.solve'.
         return x
 

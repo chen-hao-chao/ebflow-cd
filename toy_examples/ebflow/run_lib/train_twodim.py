@@ -130,11 +130,11 @@ def run(config):
             loss = loss.mean()
         elif config['loss_type'] == 'cd':
             batch_size = x.shape[0]
-            neg_e, _, _ = ebflow.neg_energy(x)
-            score = torch.autograd.grad(neg_e.sum(), x)[0]
+            replay_x, _ = replay_buffer.sample(batch_size)
+            replay_x = torch.tensor(replay_x, requires_grad=True).to(x.device)
+            neg_e, _, _ = ebflow.neg_energy(replay_x)
+            score = torch.autograd.grad(neg_e.sum(), replay_x)[0]
             with torch.no_grad():
-                replay_x, _ = replay_buffer.sample(batch_size)
-                replay_x = torch.tensor(replay_x).to(x.device)
                 z = torch.randn(x.shape).to(x.device)
                 x_fake = replay_x + score * config['step_size'] + np.sqrt(2*config['step_size']) * z
                 x = torch.cat([x, x_fake], 0)

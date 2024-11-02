@@ -29,5 +29,5 @@
     "norm_type": "default",
     "use_ema": 1,
     "buffer_size": 1000,
-    "step_size": 0.1
+    "step_size": 0.01
 }

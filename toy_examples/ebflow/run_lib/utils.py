@@ -91,3 +91,14 @@ def plot_energy(config, energy, filename):
     plt.axis('off')
     plt.savefig(filename)
     plt.clf()
+
+def plot_samples(config, samples, filename):
+    # samples: (batch, size)
+    w = config['width']
+    h = config['height']
+    plt.figure(figsize=(6,6))
+    plt.plot(samples[:,0], samples[:,1], 'o')
+    plt.xlim(-w,w)
+    plt.ylim(-h,h)
+    plt.savefig(filename)
+    plt.clf()

@@ -8,7 +8,7 @@ from ebflow.datasets.datasets import get_dataset
 from ebflow.models import coupling_net
 from ebflow.models.ema import ExponentialMovingAverage
 from ebflow.models.buffer import ReplayBuffer
-from ebflow.run_lib.utils import get_oracle_score, evaluate, plot_energy, save_checkpoint
+from ebflow.run_lib.utils import get_oracle_score, evaluate, plot_energy, save_checkpoint, plot_samples
 
 def run(config):
     # ==========================
@@ -52,11 +52,8 @@ def run(config):
     if config['loss_type'] == 'cd':
         replay_buffer = ReplayBuffer(config['buffer_size'])
         with torch.no_grad():
-            # z = torch.randn((1000, config['input_size'])).to('cuda')
-            # x_fake = ebflow.inverse(z)
-            # print(x_fake.shape)
-            x_fake = torch.randn((1000, config['input_size'])).to('cuda', dtype=torch.double) * 3
-            # print(x_fake.shape)
+            z = torch.randn((config['buffer_size'], config['input_size'])).to('cuda')
+            x_fake = ebflow.inverse(z)
         replay_buffer.add(x_fake.detach().cpu().numpy())
     # Optimizer
     if config['opt_type'] == "adam":
@@ -134,19 +131,44 @@ def run(config):
         elif config['loss_type'] == 'cd':
             batch_size = x.shape[0]
             replay_x, _ = replay_buffer.sample(batch_size)
-            replay_x = torch.tensor(replay_x, requires_grad=True).to(x.device)
-            neg_e, _, _ = ebflow.neg_energy(replay_x)
-            score = torch.autograd.grad(neg_e.sum(), replay_x)[0]
-            with torch.no_grad():
-                z = torch.randn(x.shape).to(x.device)
-                x_fake = replay_x + score * config['step_size'] + np.sqrt(2*config['step_size']) * z
-                x = torch.cat([x, x_fake], 0)
+            x_fake = replay_x
+            for i in range(config['cd_steps']):
+                x_fake = torch.tensor(x_fake, requires_grad=True).to(x.device)
+                neg_e, _, _ = ebflow.neg_energy(x_fake)
+                score = torch.autograd.grad(neg_e.sum(), x_fake)[0]
+                with torch.no_grad():
+                    z = torch.randn(x.shape).to(x.device)
+                    x_fake = x_fake + score * config['step_size'] + np.sqrt(2*config['step_size']) * z
+            x = torch.cat([x, x_fake], 0)
             neg_e, _, _ = ebflow.neg_energy(x)
             energy_true = -neg_e[:batch_size]
             energy_fake = -neg_e[batch_size:]
             loss = energy_true - energy_fake
             loss = loss.mean()
-            replay_buffer.add(x_fake.detach().cpu().numpy())
+            x_fake = x_fake.detach().cpu().numpy()
+            replay_buffer.add(x_fake)
+        elif config['loss_type'] == 'icd':
+            batch_size = x.shape[0]
+            replay_x, _ = replay_buffer.sample(batch_size)
+            x_fake = replay_x
+            for i in range(config['cd_steps']):
+                if i == config['cd_steps'] -1:
+                    x_fake = torch.tensor(x_fake, requires_grad=True, create_graph=True).to(x.device)
+                else:
+                    x_fake = torch.tensor(x_fake, requires_grad=True).to(x.device)
+                neg_e, _, _ = ebflow.neg_energy(x_fake)
+                score = torch.autograd.grad(neg_e.sum(), x_fake)[0]
+                z = torch.randn(x.shape).to(x.device)
+                x_fake = x_fake + score * config['step_size'] + np.sqrt(2*config['step_size']) * z
+
+            x = torch.cat([x, x_fake], 0)
+            neg_e, _, _ = ebflow.neg_energy(x)
+            energy_true = -neg_e[:batch_size]
+            energy_fake = -neg_e[batch_size:]
+            loss = energy_true - energy_fake
+            loss = loss.mean() + energy_fake
+            x_fake = x_fake.detach().cpu().numpy()
+            replay_buffer.add(x_fake)
         elif config['loss_type'] == 'dsm':
             neg_e, _, _ = ebflow.neg_energy(x)
             score = torch.autograd.grad(neg_e.sum(), x, create_graph=True)[0]
@@ -189,7 +211,9 @@ def run(config):
                 torch.nn.utils.clip_grad_norm_(ebflow.parameters(), max_norm=config['grad_clip'])
             optimizer.step()
             state['step'] += 1
-            state['ema'].update(ebflow.parameters())
+            if bool(config['use_ema']):
+                state['ema'].update(ebflow.parameters())
+                # ema.copy_to(ebflow.parameters())
         else:
             print("Loss {} is nan at step {}.".format(loss, t))
 
@@ -216,7 +240,9 @@ def run(config):
             if bool(config['use_ema']):
                 ema.store(ebflow.parameters())
                 ema.copy_to(ebflow.parameters())
-                plot_energy(config, ebflow, os.path.join(visualization_dir, str(t)+'_energy.png'))
+            plot_energy(config, ebflow, os.path.join(visualization_dir, str(t)+'_energy.png'))
+            plot_samples(config, replay_x, os.path.join(visualization_dir, str(t)+'_sample_buffer.png'))
+            plot_samples(config, x_fake, os.path.join(visualization_dir, str(t)+'_sample_update.png'))
             if bool(config['use_ema']):
                 ema.restore(ebflow.parameters())
             

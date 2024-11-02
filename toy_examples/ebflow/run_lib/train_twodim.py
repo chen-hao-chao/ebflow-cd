@@ -49,7 +49,7 @@ def run(config):
                               norm_type=config['norm_type'],
                               sigma=config['sigma']).to('cuda', dtype=torch.double)
     # Buffer
-    if config['loss_type'] == 'cd':
+    if config['loss_type'] == 'cd' or config['loss_type'] == 'icd' or config['loss_type'] == 'dcd':
         replay_buffer = ReplayBuffer(config['buffer_size'])
         with torch.no_grad():
             z = torch.randn((config['buffer_size'], config['input_size'])).to('cuda')
@@ -152,21 +152,53 @@ def run(config):
             replay_x, _ = replay_buffer.sample(batch_size)
             x_fake = replay_x
             for i in range(config['cd_steps']):
-                if i == config['cd_steps'] -1:
-                    x_fake = torch.tensor(x_fake, requires_grad=True, create_graph=True).to(x.device)
-                else:
-                    x_fake = torch.tensor(x_fake, requires_grad=True).to(x.device)
+                x_fake = torch.tensor(x_fake, requires_grad=True).to(x.device)
                 neg_e, _, _ = ebflow.neg_energy(x_fake)
-                score = torch.autograd.grad(neg_e.sum(), x_fake)[0]
-                z = torch.randn(x.shape).to(x.device)
-                x_fake = x_fake + score * config['step_size'] + np.sqrt(2*config['step_size']) * z
+                if i == config['cd_steps'] -1:
+                    score = torch.autograd.grad(neg_e.sum(), x_fake, create_graph=True)[0]
+                    z = torch.randn(x.shape).to(x.device)
+                    x_fake = x_fake + score * config['step_size'] + np.sqrt(2*config['step_size']) * z
+                else:
+                    score = torch.autograd.grad(neg_e.sum(), x_fake)[0]
+                    with torch.no_grad():
+                        z = torch.randn(x.shape).to(x.device)
+                        x_fake = x_fake + score * config['step_size'] + np.sqrt(2*config['step_size']) * z
 
             x = torch.cat([x, x_fake], 0)
             neg_e, _, _ = ebflow.neg_energy(x)
             energy_true = -neg_e[:batch_size]
             energy_fake = -neg_e[batch_size:]
             loss = energy_true - energy_fake
-            loss = loss.mean() + energy_fake
+            loss = loss.mean()
+            with torch.no_grad():
+                neg_e, _, _ = ebflow.neg_energy(x_fake)
+                energy_fake = -neg_e.mean()
+            loss = loss + 0.1*energy_fake
+            x_fake = x_fake.detach().cpu().numpy()
+            replay_buffer.add(x_fake)
+        elif config['loss_type'] == 'dcd':
+            batch_size = x.shape[0]
+            replay_x, _ = replay_buffer.sample(batch_size)
+            x_fake = replay_x
+            for i in range(config['cd_steps']):
+                x_fake = torch.tensor(x_fake, requires_grad=True).to(x.device)
+                neg_e, _, _ = ebflow.neg_energy(x_fake)
+                score = torch.autograd.grad(neg_e.sum(), x_fake)[0]
+                with torch.no_grad():
+                    z = torch.randn(x.shape).to(x.device)
+                    x_fake = x_fake + score * config['step_size'] + np.sqrt(2*config['step_size']) * z
+            x = torch.cat([x, x_fake], 0)
+            neg_e, _, _ = ebflow.neg_energy(x)
+            energy_true = -neg_e[:batch_size]
+            energy_fake = -neg_e[batch_size:]
+            loss = energy_true - energy_fake
+            loss = loss.mean()
+            
+            neg_e, _, _ = ebflow.neg_energy(x_fake)
+            score = torch.autograd.grad(neg_e.sum(), x_fake, create_graph=True)[0]
+            dsm_loss = torch.sum(torch.square(score + noise/std), dim=1) * 0.5
+            dsm_loss = dsm_loss.mean()
+            loss = loss + 0.1*dsm_loss
             x_fake = x_fake.detach().cpu().numpy()
             replay_buffer.add(x_fake)
         elif config['loss_type'] == 'dsm':
@@ -213,7 +245,6 @@ def run(config):
             state['step'] += 1
             if bool(config['use_ema']):
                 state['ema'].update(ebflow.parameters())
-                # ema.copy_to(ebflow.parameters())
         else:
             print("Loss {} is nan at step {}.".format(loss, t))
 
@@ -228,10 +259,12 @@ def run(config):
             writer.add_scalar("eval_fd", fd, t)
             writer.add_scalar("eval_kld", kld, t)
             writer.add_scalar("loss", loss, t)
+            writer.add_scalar("dsm_loss", dsm_loss, t)
             # Log info
             print('iter %s:' % t, 'eval_fd = %.3f' % fd)
             print('iter %s:' % t, 'eval_kld = %.3f' % kld)
             print('iter %s:' % t, 'training_loss = %.3f' % loss)
+            print('iter %s:' % t, 'dsm_loss = %.3f' % dsm_loss)
             print("----")
             if bool(config['use_ema']):
                 ema.restore(ebflow.parameters())

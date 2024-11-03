@@ -1,9 +1,9 @@
 {
     "resultdir": "results",
-    "workdir": "cd_checkerboard",
+    "workdir": "dcd_checkerboard",
     "restore": "",
     "dataset": "checkerboard",
-    "loss_type": "cd",
+    "loss_type": "dcd",
     "lr": 1e-4,
     "grad_clip": 10.0,
     "t_net_act": "elu",

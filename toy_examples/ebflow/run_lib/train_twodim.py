@@ -177,6 +177,7 @@ def run(config):
             x_fake = x_fake.detach().cpu().numpy()
             replay_buffer.add(x_fake)
         elif config['loss_type'] == 'dcd':
+            # DSM + PCD
             batch_size = x.shape[0]
             replay_x, _ = replay_buffer.sample(batch_size)
             x_fake = replay_x
@@ -187,7 +188,7 @@ def run(config):
                 with torch.no_grad():
                     z = torch.randn(x.shape).to(x.device)
                     x_fake = x_fake + score * config['step_size'] + np.sqrt(2*config['step_size']) * z
-            x = torch.cat([x, x_fake], 0)
+            x = torch.tensor(torch.cat([x, x_fake], 0), requires_grad=True).to(x.device)
             neg_e, _, _ = ebflow.neg_energy(x)
             energy_true = -neg_e[:batch_size]
             energy_fake = -neg_e[batch_size:]

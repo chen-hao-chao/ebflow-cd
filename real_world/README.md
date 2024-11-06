@@ -7,6 +7,7 @@ This folder contains the code implementation of the experiments presented in Sec
 Installing the `ebflow` package allows you to run experiments with the `ebflow` command. Conduct the following instruction at the root of this directory to initiate the installation:
 ```
 pip install -e .
+pip install torchvision
 ```
 
 ## Usage

@@ -6,6 +6,7 @@ from ebflow.train.experiment import Experiment
 from ebflow.layers.ema import ExponentialMovingAverage
 from ebflow.datasets.mnist import load_data
 from ebflow.models.mnist.glow import create_model
+from ebflow.models.buffer import ReplayBuffer
 
 def add_weight_decay(model, weight_decay=1e-5):
     decay = []
@@ -51,7 +52,10 @@ def main(args):
                                                         lr=config['lr'])
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[i for i in range(1,config['milestones'])], gamma=config['gamma'])
     
+    # Buffer
+    replay_buffer = ReplayBuffer(config['buffer_size'])
+
     # Runner
     experiment = Experiment(model, trans, ema, train_loader, val_loader, test_loader,
-                            optimizer, scheduler, **config)
+                            optimizer, scheduler, replay_buffer, **config)
     experiment.run()

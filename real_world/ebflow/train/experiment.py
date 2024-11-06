@@ -2,13 +2,14 @@
 import os
 import torch
 import torchvision
+import numpy as np
 
 import datetime
 from torch.utils import tensorboard
 
 class Experiment:
     def __init__(self, model, trans, ema, train_loader, val_loader, test_loader,
-                 optimizer, scheduler, datasize=(1,28,28), **kwargs):
+                 optimizer, scheduler, replay_buffer, datasize=(1,28,28), **kwargs):
 
         self.train_loader = train_loader
         self.val_loader = val_loader
@@ -19,6 +20,7 @@ class Experiment:
         self.scheduler = scheduler
         self.ema = ema
         self.datasize = datasize
+        self.replay_buffer = replay_buffer
 
         try:
             self.data_shape = self.train_loader.dataset.dataset.data.shape[1:]
@@ -86,6 +88,8 @@ class Experiment:
             writer.add_scalar("test_logp", test_logpx, 0)
             writer.add_scalar("test_logp_bpd", self.to_bpd(test_logpx), 0)
         # ------------
+
+        self.replay_buffer.add(np.random.normal(size=(500,1,28,28)))
 
         for e in range(self.summary['Epoch'] + 1, self.config['epochs'] + 1):
             self.update_summary('Epoch', e)
@@ -175,6 +179,35 @@ class Experiment:
             lossval = energy_true - energy_fake
             lossval[lossval != lossval] = 0.0
             lossval = (lossval).sum() / len(x)
+        elif self.config['loss'] == 'dcd':
+            batch_size = x.shape[0]
+            replay_x, _ = self.replay_buffer.sample(batch_size)
+            x_fake = replay_x
+            for i in range(self.config['cd_steps']):
+                x_fake = torch.tensor(x_fake, requires_grad=True).to(x.device, dtype=x.dtype)
+                _, neg_e = self.model(x_fake, zero_ldj=True)
+                score = torch.autograd.grad(neg_e.sum(), x_fake)[0]
+                with torch.no_grad():
+                    z = torch.randn(x.shape).to(x.device)
+                    x_fake = x_fake + score * self.config['step_size'] + np.sqrt(2*self.config['step_size']) * z
+            
+            std = torch.empty(x.shape, device=x.device).fill_(self.config['std'])
+            noise = torch.randn_like(x, device=x.device)
+            x = torch.tensor(torch.cat([x + std * noise, x_fake], 0), requires_grad=True).to(x.device)
+            _, neg_e = self.model(x, zero_ldj=True)
+            energy_true = -neg_e[:batch_size] # positive samples
+            energy_fake = -neg_e[batch_size:] # negative samples
+            lossval = energy_true - energy_fake
+
+            x_fake = torch.tensor(x_fake, requires_grad=True).to(x.device, dtype=x.dtype)
+            _, neg_e = self.model(x_fake, zero_ldj=True)
+            score = torch.autograd.grad(neg_e.sum(), x_fake, create_graph=True)[0]
+            dsm_lossval = torch.sum(torch.square(score + noise/std) * 0.5, dim=(1,2,3))
+            lossval = lossval + 0.1 * dsm_lossval
+            lossval[lossval != lossval] = 0.0
+            lossval = (lossval).sum() / len(x)
+            x_fake = x_fake.detach().cpu().numpy()
+            self.replay_buffer.add(x_fake)
         elif self.config['loss'] == 'dsm':
             std = torch.empty(x.shape, device=x.device).fill_(self.config['std'])
             noise = torch.randn_like(x, device=x.device)

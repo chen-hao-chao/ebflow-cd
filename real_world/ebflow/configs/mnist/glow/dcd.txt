@@ -6,7 +6,7 @@
     "sample_epochs": 1,
     "warmup_epochs": 0,
     "epochs": 1000,
-    "batch_size": 100,
+    "batch_size": 50,
     "n_samples": 100,
     "grad_clip_norm": 10,
     "lr": 1e-4,
@@ -26,7 +26,7 @@
     "restore_path": "",
     "resultdir": "results",
     "workdir": "mnist_glow_dcd",
-    "buffer_size": 1000,
-    "step_size": 0.5,
+    "buffer_size": 500,
+    "step_size": 0.01,
     "cd_steps": 3
 }

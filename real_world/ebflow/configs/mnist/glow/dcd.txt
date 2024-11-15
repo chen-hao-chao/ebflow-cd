@@ -27,6 +27,6 @@
     "resultdir": "results",
     "workdir": "mnist_glow_dcd",
     "buffer_size": 1000,
-    "step_size": 0.01,
-    "cd_steps": 1
+    "step_size": 0.1,
+    "cd_steps": 10
 }

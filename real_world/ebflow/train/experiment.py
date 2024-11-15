@@ -235,16 +235,17 @@ class Experiment:
                 plus = score * self.config['step_size'] + np.sqrt(2*self.config['step_size']) * z
                 x_fake = torch.clamp(x_fake + plus, min=-10, max=10)
                 
-                x_sample_b = self.trans.reverse(replay_x)
-                x_sample_b = x_sample_b.view(batch_size, self.datasize[0], self.datasize[1], self.datasize[2])
-                x_sample_a = self.trans.reverse(x_fake)
-                x_sample_a = x_sample_a.view(batch_size, self.datasize[0], self.datasize[1], self.datasize[2])
-                s_dir = self.config['sample_dir']
-                s_path_b = os.path.join(s_dir, '{}_fake_b.png'.format(epoch))
-                s_path_a = os.path.join(s_dir, '{}_fake_a.png'.format(epoch))
-                os.makedirs(s_dir, exist_ok=True)
-                torchvision.utils.save_image(x_sample_b / 256., s_path_b, nrow=10, padding=2, normalize=False)
-                torchvision.utils.save_image(x_sample_a / 256., s_path_a, nrow=10, padding=2, normalize=False)
+                if epoch % 50 == 0:
+                    x_sample_b = self.trans.reverse(replay_x)
+                    x_sample_b = x_sample_b.view(batch_size, self.datasize[0], self.datasize[1], self.datasize[2])
+                    x_sample_a = self.trans.reverse(x_fake)
+                    x_sample_a = x_sample_a.view(batch_size, self.datasize[0], self.datasize[1], self.datasize[2])
+                    s_dir = self.config['sample_dir']
+                    s_path_b = os.path.join(s_dir, '{}_fake_b.png'.format(epoch))
+                    s_path_a = os.path.join(s_dir, '{}_fake_a.png'.format(epoch))
+                    os.makedirs(s_dir, exist_ok=True)
+                    torchvision.utils.save_image(x_sample_b / 256., s_path_b, nrow=10, padding=2, normalize=False)
+                    torchvision.utils.save_image(x_sample_a / 256., s_path_a, nrow=10, padding=2, normalize=False)
 
             # std = torch.empty(x.shape, device=x.device).fill_(self.config['std'])
             # noise = torch.randn_like(x, device=x.device)
@@ -350,7 +351,7 @@ class Experiment:
                 self.warmup_lr(epoch, num_batches)
             self.optimizer.zero_grad()
             x = x.float().to('cuda')
-            lossval = self.get_loss(x, epoch)
+            lossval = self.get_loss(x, num_batches)
             lossval.backward()
             
             # Gradient clipping

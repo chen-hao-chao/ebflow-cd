@@ -9,7 +9,7 @@
     "batch_size": 50,
     "n_samples": 100,
     "grad_clip_norm": 10,
-    "lr": 1e-4,
+    "lr": 1e-5,
     "wd": 0.0,
     "gamma": 1.0,
     "ema_decay": 0.999,
@@ -26,7 +26,7 @@
     "restore_path": "",
     "resultdir": "results",
     "workdir": "mnist_glow_dcd",
-    "buffer_size": 500,
+    "buffer_size": 1000,
     "step_size": 0.01,
-    "cd_steps": 3
+    "cd_steps": 1
 }
